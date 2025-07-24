@@ -8,50 +8,54 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     body {
-      background-color: #1e1e1e;
-      color: #f8f9fa;
+      background-color: #1c1c1e;
+      color: #f2f2f7;
       font-family: monospace;
     }
     .terminal {
-      background-color: #2a2a2a;
+      background-color: #2c2c2e;
       max-height: 400px;
       overflow-y: auto;
-      border: 1px solid #444;
+      border: 1px solid #3a3a3c;
+      margin-bottom: 1rem;
     }
     #tabela-registros {
       width: 100%;
       font-size: 0.9rem;
-      color: #f8f9fa;
+      color: #f2f2f7;
     }
     #tabela-registros th,
     #tabela-registros td {
       padding: 4px 8px;
-      border-bottom: 1px solid #444;
-      white-space: nowrap;
+      border-bottom: 1px solid #3a3a3c;
     }
     #tabela-registros thead th {
       position: sticky;
       top: 0;
-      background-color: #333;
+      background-color: #2c2c2e;
       z-index: 1;
     }
     .linha-selecionada {
-      background-color: #555 !important;
+      background-color: #5c5c61 !important;
     }
     .input-row {
       position: fixed;
       bottom: 0;
       left: 0;
       width: 100%;
-      background-color: #1e1e1e;
+      background-color: #1c1c1e;
       padding: 0.5rem;
-      border-top: 1px solid #444;
+      border-top: 1px solid #3a3a3c;
       z-index: 1000;
     }
     .input-row input {
       font-family: monospace;
-      font-size: 0.85rem;
-      margin-bottom: 0.2rem;
+      font-size: 0.8rem;
+      margin-bottom: 0.3rem;
+    }
+    .btn-ios {
+      border-radius: 1rem;
+      font-weight: 600;
     }
   </style>
 </head>
@@ -59,10 +63,10 @@
   <div class="container-fluid">
     <h4 class="text-center mt-2">294 Manutenção</h4>
 
-    <input type="text" id="pesquisa" class="form-control form-control-sm mb-2" placeholder="🔎 Pesquisar Motorista ou Observações" oninput="atualizarTabela()" />
+    <input type="text" id="pesquisa" class="form-control form-control-sm mb-2" placeholder="🔎 Pesquisar por Motorista ou Observações" oninput="atualizarTerminal()" />
 
     <div class="terminal">
-      <table id="tabela-registros" class="table table-sm">
+      <table id="tabela-registros" class="table table-dark table-sm table-hover">
         <thead>
           <tr>
             <th>#</th>
@@ -87,34 +91,45 @@
       <div class="col"><input type="number" id="km_entrada" class="form-control form-control-sm" placeholder="Km. Entrada"></div>
       <div class="col"><input type="text" id="motorista" class="form-control form-control-sm" placeholder="Motorista"></div>
       <div class="col"><input type="text" id="obs" class="form-control form-control-sm" placeholder="Observações"></div>
-      <div class="col-auto d-grid">
-        <button class="btn btn-success btn-sm" onclick="salvarRegistro()">Salvar</button>
+      <div class="col-auto">
+        <button class="btn btn-success btn-sm btn-ios" onclick="salvarRegistro()">Salvar</button>
       </div>
-      <div class="col-auto d-grid">
-        <button class="btn btn-warning btn-sm" onclick="editarRegistro()">Editar</button>
+      <div class="col-auto">
+        <button class="btn btn-warning btn-sm btn-ios" onclick="editarSelecionado()">Editar</button>
       </div>
-      <div class="col-auto d-grid">
-        <button class="btn btn-danger btn-sm" onclick="excluirRegistro()">Excluir</button>
+      <div class="col-auto">
+        <button class="btn btn-danger btn-sm btn-ios" onclick="excluirSelecionado()">Excluir</button>
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-secondary btn-sm btn-ios" onclick="emitirTXT()">.TXT</button>
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-secondary btn-sm btn-ios" onclick="emitirExcel()">.XLSX</button>
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-light btn-sm btn-ios" onclick="limparCampos()">Limpar</button>
       </div>
     </div>
   </div>
 
   <script>
-    const STORAGE_KEY = 'registros_294_manutencao';
+    const STORAGE_KEY = 'registros_km_rte700';
     let registros = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
     let registroSelecionado = null;
 
-    function atualizarTabela() {
+    function atualizarTerminal() {
       const filtro = document.getElementById('pesquisa').value.toLowerCase();
       const corpo = document.getElementById('corpo-registros');
 
       corpo.innerHTML = registros
         .map((r, i) => ({ ...r, index: i }))
         .filter(r =>
-          r.motorista.toLowerCase().includes(filtro) || r.obs.toLowerCase().includes(filtro)
+          !filtro ||
+          r.motorista.toLowerCase().includes(filtro) ||
+          r.obs.toLowerCase().includes(filtro)
         )
         .map(r => `
-          <tr onclick="selecionarRegistro(${r.index})" class="${registroSelecionado === r.index ? 'linha-selecionada' : ''}">
+          <tr class="${registroSelecionado === r.index ? 'linha-selecionada' : ''}" onclick="selecionarRegistro(${r.index})" style="cursor:pointer;">
             <td>${r.index + 1}</td>
             <td>${r.data}</td>
             <td>${r.saida}</td>
@@ -124,7 +139,21 @@
             <td>${r.motorista}</td>
             <td>${r.obs}</td>
           </tr>
-        `).join('');
+        `)
+        .join('');
+    }
+
+    function selecionarRegistro(index) {
+      const r = registros[index];
+      registroSelecionado = index;
+      document.getElementById('data').value = r.data || '';
+      document.getElementById('saida').value = r.saida || '';
+      document.getElementById('entrada').value = r.entrada || '';
+      document.getElementById('km_saida').value = r.km_saida || '';
+      document.getElementById('km_entrada').value = r.km_entrada || '';
+      document.getElementById('motorista').value = r.motorista || '';
+      document.getElementById('obs').value = r.obs || '';
+      atualizarTerminal();
     }
 
     function salvarRegistro() {
@@ -140,26 +169,13 @@
 
       registros.push(novo);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(registros));
-      limparCampos();
-      atualizarTabela();
+      limparCampos(false);
+      atualizarTerminal();
     }
 
-    function selecionarRegistro(index) {
-      const r = registros[index];
-      registroSelecionado = index;
-      document.getElementById('data').value = r.data;
-      document.getElementById('saida').value = r.saida;
-      document.getElementById('entrada').value = r.entrada;
-      document.getElementById('km_saida').value = r.km_saida;
-      document.getElementById('km_entrada').value = r.km_entrada;
-      document.getElementById('motorista').value = r.motorista;
-      document.getElementById('obs').value = r.obs;
-      atualizarTabela();
-    }
-
-    function editarRegistro() {
+    function editarSelecionado() {
       if (registroSelecionado === null) {
-        alert("Selecione um registro para editar.");
+        alert("Selecione uma linha clicando na tabela.");
         return;
       }
 
@@ -174,30 +190,60 @@
       };
 
       localStorage.setItem(STORAGE_KEY, JSON.stringify(registros));
-      atualizarTabela();
+      atualizarTerminal();
     }
 
-    function excluirRegistro() {
+    function excluirSelecionado() {
       if (registroSelecionado === null) {
-        alert("Selecione um registro para excluir.");
+        alert("Selecione uma linha clicando na tabela.");
         return;
       }
-
       if (confirm(`Deseja excluir o registro #${registroSelecionado + 1}?`)) {
         registros.splice(registroSelecionado, 1);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(registros));
-        limparCampos();
-        atualizarTabela();
+        limparCampos(false);
+        atualizarTerminal();
       }
     }
 
-    function limparCampos() {
+    function limparCampos(confirmar = true) {
+      if (confirmar && (registroSelecionado !== null || document.querySelector('#motorista').value !== '')) {
+        if (!confirm("Deseja realmente limpar os campos?")) return;
+      }
       document.querySelectorAll('.input-row input').forEach(i => i.value = '');
       registroSelecionado = null;
+      atualizarTerminal();
     }
 
-    atualizarTabela();
+    function emitirTXT() {
+      const texto = registros.map((r, i) =>
+        `#${i + 1} ${r.data} ${r.saida} ${r.entrada} ${r.km_saida} ${r.km_entrada} ${r.motorista} ${r.obs}`
+      ).join('\n');
+
+      const blob = new Blob([texto], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'registros_km.txt';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function emitirExcel() {
+      const headers = ["data", "saida", "entrada", "km_saida", "km_entrada", "motorista", "obs"];
+      const dadosOrdenados = registros.map(r => {
+        let obj = {};
+        headers.forEach(h => obj[h] = r[h]);
+        return obj;
+      });
+
+      const ws = XLSX.utils.json_to_sheet(dadosOrdenados);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Registros");
+      XLSX.writeFile(wb, "registros_km.xlsx");
+    }
+
+    atualizarTerminal();
   </script>
 </body>
 </html>
-
