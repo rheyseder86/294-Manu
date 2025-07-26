@@ -3,8 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>294 Manutenção</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <title>294 Manutenção</title> <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     body {
@@ -57,18 +56,24 @@
       border-radius: 1rem;
       font-weight: 600;
     }
+    /* Estilo para a caixa de seleção */
+    .checkbox-col {
+      width: 30px; /* Largura fixa para a coluna do checkbox */
+      text-align: center;
+    }
   </style>
 </head>
 <body>
   <div class="container-fluid">
-    <h4 class="text-center mt-2">294 Manutenção</h4>
-
-    <input type="text" id="pesquisa" class="form-control form-control-sm mb-2" placeholder="🔎 Pesquisar por Motorista ou Observações" oninput="atualizarTerminal()" />
+    <h4 class="text-center mt-2">294 Manutenção</h4> <input type="text" id="pesquisa" class="form-control form-control-sm mb-2" placeholder="🔎 Pesquisar por Motorista" oninput="atualizarTerminal()" />
 
     <div class="terminal">
       <table id="tabela-registros" class="table table-dark table-sm table-hover">
         <thead>
           <tr>
+            <th class="checkbox-col">
+              <input type="checkbox" id="selecionarTodos" onclick="toggleSelecionarTodos(this)" />
+            </th>
             <th>#</th>
             <th>Data</th>
             <th>H. Saída</th>
@@ -76,7 +81,6 @@
             <th>Km. Saída</th>
             <th>Km. Entrada</th>
             <th>Motorista</th>
-            <th>Observações</th>
           </tr>
         </thead>
         <tbody id="corpo-registros"></tbody>
@@ -84,13 +88,12 @@
     </div>
 
     <div class="input-row row gx-2">
-      <div class="col"><input type="date" id="data" class="form-control form-control-sm" placeholder="Data"></div>
-      <div class="col"><input type="time" id="saida" class="form-control form-control-sm" placeholder="H. Saída"></div>
-      <div class="col"><input type="time" id="entrada" class="form-control form-control-sm" placeholder="H. Entrada"></div>
-      <div class="col"><input type="number" id="km_saida" class="form-control form-control-sm" placeholder="Km. Saída"></div>
-      <div class="col"><input type="number" id="km_entrada" class="form-control form-control-sm" placeholder="Km. Entrada"></div>
+      <div class="col"><input type="time" id="hSaidaInput" class="form-control form-control-sm" placeholder="H. Saída"></div>
+      <div class="col"><input type="time" id="hEntradaInput" class="form-control form-control-sm" placeholder="H. Entrada"></div>
+      <div class="col"><input type="number" id="kmSaida" class="form-control form-control-sm" placeholder="Km. Saída"></div>
+      <div class="col"><input type="number" id="kmEntrada" class="form-control form-control-sm" placeholder="Km. Entrada"></div>
       <div class="col"><input type="text" id="motorista" class="form-control form-control-sm" placeholder="Motorista"></div>
-      <div class="col"><input type="text" id="obs" class="form-control form-control-sm" placeholder="Observações"></div>
+      
       <div class="col-auto">
         <button class="btn btn-success btn-sm btn-ios" onclick="salvarRegistro()">Salvar</button>
       </div>
@@ -98,7 +101,7 @@
         <button class="btn btn-warning btn-sm btn-ios" onclick="editarSelecionado()">Editar</button>
       </div>
       <div class="col-auto">
-        <button class="btn btn-danger btn-sm btn-ios" onclick="excluirSelecionado()">Excluir</button>
+        <button class="btn btn-danger btn-sm btn-ios" onclick="excluirSelecionados()">Excluir Selecionados</button>
       </div>
       <div class="col-auto">
         <button class="btn btn-secondary btn-sm btn-ios" onclick="emitirTXT()">.TXT</button>
@@ -113,58 +116,112 @@
   </div>
 
   <script>
-    const STORAGE_KEY = 'registros_km_294_manutencao';
+    const STORAGE_KEY = 'manutencao_294_data'; // Chave de armazenamento alterada
     let registros = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-    let registroSelecionado = null;
+    let registroSelecionadoIndex = null; 
+
+    function formatarDataParaExibicao(timestamp) {
+      if (!timestamp) return '';
+      const date = new Date(timestamp);
+      const dia = String(date.getDate()).padStart(2, '0');
+      const mes = String(date.getMonth() + 1).padStart(2, '0');
+      const ano = date.getFullYear();
+      return `${dia}/${mes}/${ano}`;
+    }
+
+    function criarTimestampHojeComHora(horaString) {
+      if (!horaString) return null; 
+      const now = new Date();
+      const [hours, minutes] = horaString.split(':').map(Number);
+      if (isNaN(hours) || isNaN(minutes)) return null; 
+      now.setHours(hours, minutes, 0, 0); 
+      return now.getTime();
+    }
 
     function atualizarTerminal() {
       const filtro = document.getElementById('pesquisa').value.toLowerCase();
       const corpo = document.getElementById('corpo-registros');
 
-      corpo.innerHTML = registros
-        .map((r, i) => ({ ...r, index: i }))
+      const registrosOrdenados = [...registros].sort((a, b) => a.ordemTimestamp - b.ordemTimestamp);
+
+      corpo.innerHTML = registrosOrdenados
         .filter(r =>
           !filtro ||
-          r.motorista.toLowerCase().includes(filtro) ||
-          r.obs.toLowerCase().includes(filtro)
+          r.motorista.toLowerCase().includes(filtro)
         )
-        .map(r => `
-          <tr class="${registroSelecionado === r.index ? 'linha-selecionada' : ''}" onclick="selecionarRegistro(${r.index})" style="cursor:pointer;">
-            <td>${r.index + 1}</td>
-            <td>${r.data}</td>
-            <td>${r.saida}</td>
-            <td>${r.entrada}</td>
-            <td>${r.km_saida}</td>
-            <td>${r.km_entrada}</td>
-            <td>${r.motorista}</td>
-            <td>${r.obs}</td>
-          </tr>
-        `)
+        .map((r, i) => {
+          // Achar o índice original de forma mais robusta, usando timestamp e motorista
+          const originalIndex = registros.findIndex(reg => reg.timestamp === r.timestamp && reg.motorista === r.motorista); 
+          const dataExibicao = formatarDataParaExibicao(r.timestamp);
+
+          return `
+            <tr class="${registroSelecionadoIndex === originalIndex ? 'linha-selecionada' : ''}">
+              <td class="checkbox-col">
+                <input type="checkbox" class="selecao-item" data-index="${originalIndex}" />
+              </td>
+              <td onclick="selecionarRegistro(${originalIndex})" style="cursor:pointer;">${i + 1}</td>
+              <td onclick="selecionarRegistro(${originalIndex})" style="cursor:pointer;">${dataExibicao}</td>
+              <td onclick="selecionarRegistro(${originalIndex})" style="cursor:pointer;">${r.hSaida}</td>
+              <td onclick="selecionarRegistro(${originalIndex})" style="cursor:pointer;">${r.hEntrada}</td>
+              <td onclick="selecionarRegistro(${originalIndex})" style="cursor:pointer;">${r.kmSaida}</td>
+              <td onclick="selecionarRegistro(${originalIndex})" style="cursor:pointer;">${r.kmEntrada}</td>
+              <td onclick="selecionarRegistro(${originalIndex})" style="cursor:pointer;">${r.motorista}</td>
+            </tr>
+          `;
+        })
         .join('');
+
+      const selecionarTodosCheckbox = document.getElementById('selecionarTodos');
+      if (selecionarTodosCheckbox) {
+          const checkboxes = document.querySelectorAll('.selecao-item');
+          const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+          selecionarTodosCheckbox.checked = allChecked && checkboxes.length > 0;
+          selecionarTodosCheckbox.indeterminate = !allChecked && Array.from(checkboxes).some(cb => cb.checked);
+      }
     }
 
     function selecionarRegistro(index) {
+      registroSelecionadoIndex = index;
       const r = registros[index];
-      registroSelecionado = index;
-      document.getElementById('data').value = r.data || '';
-      document.getElementById('saida').value = r.saida || '';
-      document.getElementById('entrada').value = r.entrada || '';
-      document.getElementById('km_saida').value = r.km_saida || '';
-      document.getElementById('km_entrada').value = r.km_entrada || '';
-      document.getElementById('motorista').value = r.motorista || '';
-      document.getElementById('obs').value = r.obs || '';
-      atualizarTerminal();
+
+      document.getElementById('hSaidaInput').value = r.hSaida; 
+      document.getElementById('hEntradaInput').value = r.hEntrada;
+      document.getElementById('kmSaida').value = r.kmSaida;
+      document.getElementById('kmEntrada').value = r.kmEntrada;
+      document.getElementById('motorista').value = r.motorista;
+
+      atualizarTerminal(); 
     }
 
     function salvarRegistro() {
+      const hSaida = document.getElementById('hSaidaInput').value.trim();
+      const hEntrada = document.getElementById('hEntradaInput').value.trim();
+      
+      if (!hSaida && !hEntrada) {
+        alert("Pelo menos 'H. Saída' ou 'H. Entrada' deve ser preenchido.");
+        return;
+      }
+
+      let ordemTimestamp = null;
+      if (hEntrada) { // Prioriza H. Entrada para ordenação
+          ordemTimestamp = criarTimestampHojeComHora(hEntrada);
+      } else if (hSaida) { 
+          ordemTimestamp = criarTimestampHojeComHora(hSaida);
+      }
+
+      if (!ordemTimestamp) { 
+          alert("Não foi possível determinar um horário válido para ordenação. Verifique as horas.");
+          return;
+      }
+
       const novo = {
-        data: document.getElementById('data').value,
-        saida: document.getElementById('saida').value,
-        entrada: document.getElementById('entrada').value,
-        km_saida: document.getElementById('km_saida').value,
-        km_entrada: document.getElementById('km_entrada').value,
-        motorista: document.getElementById('motorista').value.trim(),
-        obs: document.getElementById('obs').value.trim()
+        timestamp: new Date().getTime(), 
+        ordemTimestamp: ordemTimestamp, 
+        hSaida: hSaida,
+        hEntrada: hEntrada,
+        kmSaida: document.getElementById('kmSaida').value, 
+        kmEntrada: document.getElementById('kmEntrada').value,
+        motorista: document.getElementById('motorista').value.trim()
       };
 
       registros.push(novo);
@@ -174,32 +231,61 @@
     }
 
     function editarSelecionado() {
-      if (registroSelecionado === null) {
-        alert("Selecione uma linha clicando na tabela.");
+      if (registroSelecionadoIndex === null) {
+        alert("Selecione uma linha clicando na tabela para editar.");
         return;
       }
 
-      registros[registroSelecionado] = {
-        data: document.getElementById('data').value,
-        saida: document.getElementById('saida').value,
-        entrada: document.getElementById('entrada').value,
-        km_saida: document.getElementById('km_saida').value,
-        km_entrada: document.getElementById('km_entrada').value,
-        motorista: document.getElementById('motorista').value.trim(),
-        obs: document.getElementById('obs').value.trim()
+      const hSaida = document.getElementById('hSaidaInput').value.trim();
+      const hEntrada = document.getElementById('hEntradaInput').value.trim();
+
+      if (!hSaida && !hEntrada) {
+        alert("Pelo menos 'H. Saída' ou 'H. Entrada' deve ser preenchido para edição.");
+        return;
+      }
+
+      let ordemTimestamp = null;
+      if (hEntrada) { // Prioriza H. Entrada para ordenação
+          ordemTimestamp = criarTimestampHojeComHora(hEntrada);
+      } else if (hSaida) { 
+          ordemTimestamp = criarTimestampHojeComHora(hSaida);
+      }
+      
+      if (!ordemTimestamp) { 
+          alert("Não foi possível determinar um horário válido para ordenação. Verifique as horas.");
+          return;
+      }
+
+      registros[registroSelecionadoIndex] = {
+        timestamp: new Date().getTime(), 
+        ordemTimestamp: ordemTimestamp, 
+        hSaida: hSaida,
+        hEntrada: hEntrada,
+        kmSaida: document.getElementById('kmSaida').value,
+        kmEntrada: document.getElementById('kmEntrada').value,
+        motorista: document.getElementById('motorista').value.trim()
       };
 
       localStorage.setItem(STORAGE_KEY, JSON.stringify(registros));
       atualizarTerminal();
     }
 
-    function excluirSelecionado() {
-      if (registroSelecionado === null) {
-        alert("Selecione uma linha clicando na tabela.");
+    function excluirSelecionados() {
+      const checkboxes = document.querySelectorAll('.selecao-item:checked');
+      if (checkboxes.length === 0) {
+        alert("Nenhum item selecionado para exclusão.");
         return;
       }
-      if (confirm(`Deseja excluir o registro #${registroSelecionado + 1}?`)) {
-        registros.splice(registroSelecionado, 1);
+
+      if (confirm(`Deseja excluir ${checkboxes.length} registro(s) selecionado(s)?`)) {
+        const indicesParaExcluir = Array.from(checkboxes)
+          .map(cb => parseInt(cb.dataset.index))
+          .sort((a, b) => b - a); 
+
+        indicesParaExcluir.forEach(index => {
+          registros.splice(index, 1);
+        });
+
         localStorage.setItem(STORAGE_KEY, JSON.stringify(registros));
         limparCampos(false);
         atualizarTerminal();
@@ -207,43 +293,73 @@
     }
 
     function limparCampos(confirmar = true) {
-      if (confirmar && (registroSelecionado !== null || document.querySelector('#motorista').value !== '')) {
+      if (confirmar && (registroSelecionadoIndex !== null || document.querySelector('#motorista').value !== '')) {
         if (!confirm("Deseja realmente limpar os campos?")) return;
       }
       document.querySelectorAll('.input-row input').forEach(i => i.value = '');
-      registroSelecionado = null;
+      registroSelecionadoIndex = null;
+      document.getElementById('selecionarTodos').checked = false;
       atualizarTerminal();
     }
 
+    function toggleSelecionarTodos(source) {
+      const checkboxes = document.querySelectorAll('.selecao-item');
+      checkboxes.forEach(checkbox => {
+        checkbox.checked = source.checked;
+      });
+    }
+
     function emitirTXT() {
-      const texto = registros.map((r, i) =>
-        `#${i + 1} ${r.data} ${r.saida} ${r.entrada} ${r.km_saida} ${r.km_entrada} ${r.motorista} ${r.obs}`
-      ).join('\n');
+      const texto = registros.map((r, i) => {
+        const dataExibicao = formatarDataParaExibicao(r.timestamp);
+        return `#${i + 1} ${dataExibicao} H. Saída: ${r.hSaida || '-'} H. Entrada: ${r.hEntrada || '-'} Km. Saída: ${r.kmSaida || '-'} Km. Entrada: ${r.kmEntrada || '-'} Motorista: ${r.motorista || '-'}`;
+      }).join('\n');
 
       const blob = new Blob([texto], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'registros_km.txt';
+      a.download = '294_manutencao_registros.txt'; // Nome do arquivo TXT alterado
       a.click();
       URL.revokeObjectURL(url);
     }
 
     function emitirExcel() {
-      const headers = ["data", "saida", "entrada", "km_saida", "km_entrada", "motorista", "obs"];
-      const dadosOrdenados = registros.map(r => {
-        let obj = {};
-        headers.forEach(h => obj[h] = r[h]);
-        return obj;
+      const headers = [
+        "Data", "H. Saída", "H. Entrada", "Km. Saída", "Km. Entrada", "Motorista"
+      ];
+      
+      const dadosParaExcel = registros.map(r => {
+        const dataExibicao = formatarDataParaExibicao(r.timestamp);
+        return {
+          "Data": dataExibicao,
+          "H. Saída": r.hSaida,
+          "H. Entrada": r.hEntrada,
+          "Km. Saída": r.kmSaida,
+          "Km. Entrada": r.kmEntrada,
+          "Motorista": r.motorista
+        };
       });
 
-      const ws = XLSX.utils.json_to_sheet(dadosOrdenados);
+      const ws = XLSX.utils.json_to_sheet(dadosParaExcel, { header: headers });
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Registros");
-      XLSX.writeFile(wb, "registros_km.xlsx");
+      XLSX.utils.book_append_sheet(wb, ws, "294 Manutenção Registros"); // Nome da planilha Excel alterado
+      XLSX.writeFile(wb, "294_manutencao_registros.xlsx"); // Nome do arquivo XLSX alterado
     }
 
+    // Inicializa a exibição da tabela ao carregar a página
     atualizarTerminal();
+
+    // Adiciona listener para desmarcar "selecionar todos" se algum item for desmarcado individualmente
+    document.getElementById('corpo-registros').addEventListener('change', (event) => {
+        if (event.target.classList.contains('selecao-item')) {
+            const selecionarTodosCheckbox = document.getElementById('selecionarTodos');
+            const checkboxes = document.querySelectorAll('.selecao-item');
+            const checkedCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+            selecionarTodosCheckbox.checked = checkedCount === checkboxes.length && checkboxes.length > 0;
+            selecionarTodosCheckbox.indeterminate = checkedCount > 0 && checkedCount < checkboxes.length;
+        }
+    });
   </script>
 </body>
 </html>
